@@ -193,6 +193,8 @@ macro_rules! maybe_tuple_doc {
 // final value, to produce better results for simple primitives.
 macro_rules! lexical_ord {
     ($rel: ident, $chain_rel: ident, $a:expr, $b:expr, $($rest_a:expr, $rest_b:expr),+) => {{
+        // Using `?` here makes this harder on mir-opt due
+        // to the `Try` residuals bloating the function
         match PartialOrd::$chain_rel(&$a, &$b) {
             Break(val) => val,
             Continue(()) => lexical_ord!($rel, $chain_rel, $($rest_a, $rest_b),+),
@@ -206,13 +208,13 @@ macro_rules! lexical_ord {
 
 // Same parameter interleaving as `lexical_ord` above
 macro_rules! lexical_chain {
-    ($chain_rel: ident, $a:expr, $b:expr $(,$rest_a:expr, $rest_b:expr)*) => {{
-        PartialOrd::$chain_rel(&$a, &$b)?;
-        lexical_chain!($chain_rel $(,$rest_a, $rest_b)*)
-    }};
-    ($chain_rel: ident) => {
+    ($chain_rel:ident $(, $a:expr, $b:expr)* $(,)?) => {{
+        $(match PartialOrd::$chain_rel(&$a, &$b) {
+            r @ Break(_) => return r,
+            _ => (),
+        })*
         Continue(())
-    };
+    }};
 }
 
 macro_rules! lexical_partial_cmp {
